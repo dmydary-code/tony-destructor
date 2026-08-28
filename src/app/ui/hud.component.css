@@ -1,0 +1,89 @@
+.hud { position: absolute; inset: 0; pointer-events: none; }
+
+.panel {
+  position: absolute;
+  background: rgba(20, 14, 10, 0.62);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 190, 120, 0.25);
+  border-radius: 12px;
+  padding: 12px 16px;
+  min-width: 200px;
+}
+.top-left { left: 16px; top: 16px; }
+.top-right { right: 16px; top: 16px; text-align: right; font-size: 13px; line-height: 1.5; color: #f3dcc4; }
+
+.label { font-size: 11px; letter-spacing: 2px; color: #e5b98c; margin-top: 4px; }
+.score {
+  font-family: "Baloo 2", "Nunito", "Trebuchet MS", system-ui, sans-serif;
+  font-size: 38px; font-weight: 800; color: #ffcf8a; line-height: 1.1;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  transform-origin: left center;
+}
+.score.pop { animation: pop 0.35s ease-out; }
+@keyframes pop { 0% { transform: scale(1.35); color: #fff; } 100% { transform: scale(1); } }
+
+.meter { height: 12px; border-radius: 6px; background: rgba(255, 255, 255, 0.12); overflow: hidden; margin-top: 4px; }
+.meter-fill { height: 100%; background: linear-gradient(90deg, #e8d14a, #f7e77a); transition: width 0.2s; }
+.meter-fill.full { animation: pulse 0.7s infinite alternate; }
+@keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.6); } }
+
+.seen { display: inline-block; font-weight: 800; color: #ff5b5b; font-size: 18px; opacity: 0; transition: opacity 0.15s; margin-bottom: 4px; }
+.seen.on { opacity: 1; animation: pulse 0.3s infinite alternate; }
+
+.prompt {
+  position: absolute; left: 50%; bottom: 16%; transform: translateX(-50%);
+  background: rgba(20, 14, 10, 0.75); border: 1px solid rgba(255, 190, 120, 0.35);
+  padding: 10px 18px; border-radius: 999px; font-size: 15px; white-space: nowrap;
+}
+
+.progress {
+  position: absolute; left: 50%; bottom: calc(16% + 54px); transform: translateX(-50%);
+  width: 220px; height: 18px; border-radius: 9px;
+  background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.3); overflow: hidden;
+}
+.progress-fill { height: 100%; background: linear-gradient(90deg, #ff9a3c, #ffd36e); }
+.progress-label { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 18px; letter-spacing: 1px; }
+
+.log { position: absolute; left: 16px; bottom: 16px; font-size: 14px; max-width: 420px; }
+.line {
+  background: rgba(20, 14, 10, 0.6); padding: 5px 10px; margin-top: 4px; border-radius: 8px;
+  transition: opacity 1.5s; border-left: 3px solid #e5b98c;
+}
+.line.good { border-left-color: #7ee787; }
+.line.bad { border-left-color: #ff5b5b; }
+.line.super { border-left-color: #ffd36e; background: rgba(120, 80, 0, 0.7); font-weight: 700; }
+.line.fade { opacity: 0; }
+
+.bubble {
+  position: absolute; transform: translate(-50%, -100%);
+  background: #fff; color: #222; padding: 6px 10px; border-radius: 12px;
+  font-weight: 700; font-size: 14px; white-space: nowrap;
+}
+.bubble::after {
+  content: ""; position: absolute; left: 50%; bottom: -8px;
+  border: 5px solid transparent; border-top-color: #fff; transform: translateX(-50%);
+}
+
+.toast {
+  position: absolute; left: 50%; top: 22%; transform: translateX(-50%);
+  font-family: "Baloo 2", "Nunito", "Trebuchet MS", system-ui, sans-serif;
+  font-size: 44px; font-weight: 900; color: #ffd36e;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.7); opacity: 0;
+}
+.toast.bad { color: #ff6b6b; }
+.toast.show { animation: toast 2.2s ease-out forwards; }
+@keyframes toast {
+  0% { opacity: 0; transform: translate(-50%, 20px) scale(0.8); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -30px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .score.pop, .meter-fill.full, .seen.on, .toast.show {
+    animation-duration: 0.01s;
+    animation-iteration-count: 1;
+  }
+}
+
+@media (max-width: 640px) { .top-right { display: none; } }

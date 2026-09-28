@@ -232,3 +232,60 @@ export const SPARK_FRAG = /* glsl */`
     gl_FragColor = vec4(vColor, a);
   }
 `;
+
+// ---- Shell fur: the same mesh drawn N times, each shell pushed out along the
+// normal; a per-strand hash thins the shells toward the tips so the silhouette
+// reads as short fluffy hair instead of a smooth plastic surface. -----------
+export const SHELL_VERT = /* glsl */`
+  uniform float uShell;     // 0 (skin) … 1 (tip)
+  uniform float uFurLen;
+  uniform float uTime;
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vObjPos;
+  void main() {
+    vObjPos = position;                       // undisplaced: keeps strands aligned across shells
+    vec3 n = normalize(normal);
+    vec3 p = position + n * uFurLen * uShell;
+    vec4 wp = modelMatrix * vec4(p, 1.0);
+    // gravity + a little sway so the tips droop and move
+    wp.y -= uFurLen * 0.7 * uShell * uShell;
+    wp.x += sin(uTime * 2.0 + wp.z * 6.0) * 0.004 * uShell * uShell;
+    vWorldPos = wp.xyz;
+    vNormal = normalize(mat3(modelMatrix) * n);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+export const SHELL_FRAG = /* glsl */`
+  precision highp float;
+  uniform vec3 uColor;
+  uniform vec3 uBelly;
+  uniform float uShell;
+  uniform float uDensity;
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vObjPos;
+  ${NOISE_GLSL}
+  ${LIGHTING_GLSL}
+  void main() {
+    vec3 cell = vObjPos * uDensity;
+    vec3 f = fract(cell) - 0.5;
+    float h = hash3(floor(cell));            // one value per strand
+    float r = dot(f, f) * 3.0;               // distance from the strand's centre line
+    // strand is present in this shell if it is long enough and we are near its centre
+    if (h * (1.0 - r * 0.7) < uShell * 0.85) discard;
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(cameraPosition - vWorldPos);
+    float belly = smoothstep(-0.2, -0.9, N.y);
+    float tint = noise3(vObjPos * 9.0);
+    vec3 albedo = mix(uColor, uBelly, belly) * (0.9 + 0.2 * tint);
+    vec3 col = shade(N, V, vWorldPos, albedo, 12.0, 0.08);
+    // roots sit in shadow, tips catch the light
+    col *= mix(0.8, 1.18, uShell);
+    col *= 0.75 + 0.25 * smoothstep(-0.6, 0.6, N.y);
+    float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    col += rim * vec3(1.0, 0.6, 0.35) * 0.2 * uShell;
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;

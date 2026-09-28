@@ -264,7 +264,7 @@ export class Sparkles {
 export class Dust {
   private readonly geo = new THREE.BufferGeometry();
   private readonly pos: Float32Array;
-  private readonly n = 250;
+  private readonly n = 90;
 
   constructor(scene: THREE.Scene) {
     const n = this.n;
@@ -276,7 +276,7 @@ export class Dust {
       this.pos[i * 3] = room + (Math.random() - 0.5) * 2.2;
       this.pos[i * 3 + 1] = 0.2 + Math.random() * 2.2;
       this.pos[i * 3 + 2] = -3.4 + Math.random() * 3.5;
-      life[i] = 0.15 + Math.random() * 0.25;
+      life[i] = 0.05 + Math.random() * 0.12;
       col[i * 3] = 1; col[i * 3 + 1] = 0.95; col[i * 3 + 2] = 0.8;
     }
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
@@ -284,7 +284,7 @@ export class Dust {
     this.geo.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
     const mat = new THREE.ShaderMaterial({
       vertexShader: SPARK_VERT, fragmentShader: SPARK_FRAG,
-      uniforms: { uSize: { value: 0.3 } },
+      uniforms: { uSize: { value: 0.16 } },
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
     const pts = new THREE.Points(this.geo, mat);

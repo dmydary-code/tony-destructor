@@ -43,53 +43,91 @@ export class Tony {
       fragmentShader: FUR_FRAG,
       uniforms: {
         ...lightUniforms,
-        uColor: { value: new THREE.Color(0xb8642a) },  // copper
-        uBelly: { value: new THREE.Color(0xd9915a) },
+        uColor: { value: new THREE.Color(0x9e4a17) },  // copper
+        uBelly: { value: new THREE.Color(0xcf8a4e) },
         uTime: { value: 0 },
       },
     });
     const fur = this.fur;
-    const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
-    const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.25 });
+    const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.15 });
+    const glint = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const collarMat = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.6 });
+    const brass = new THREE.MeshStandardMaterial({ color: 0xf2c14e, roughness: 0.25, metalness: 0.9 });
 
-    this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.62, 6, 14), fur);
+    // Body: long sausage with a slight sag, deeper chest at the front.
+    this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.62, 8, 20), fur);
     this.body.rotation.x = Math.PI / 2;   // capsule axis → z (forward = +z)
     this.body.position.y = 0.26;
+    this.body.scale.set(1, 0.92, 1);
     this.body.castShadow = true;
     this.root.add(this.body);
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.165, 16, 12), fur);
+    chest.position.set(0, 0.25, 0.28); chest.scale.set(1, 0.95, 1.1); chest.castShadow = true;
+    this.root.add(chest);
+    const rump = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 12), fur);
+    rump.position.set(0, 0.26, -0.3); rump.scale.set(1, 0.9, 1.1); rump.castShadow = true;
+    this.root.add(rump);
 
-    this.head.position.set(0, 0.36, 0.42);
+    // Head: rounder skull, capsule muzzle, big glossy eyes with highlights, long floppy ears.
+    this.head.position.set(0, 0.39, 0.46);
+    this.head.scale.setScalar(1.15);
     this.root.add(this.head);
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 12), fur);
-    skull.castShadow = true; this.head.add(skull);
-    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.2), fur);
-    snout.position.set(0, -0.03, 0.16); snout.castShadow = true; this.head.add(snout);
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), black);
-    nose.position.set(0, 0, 0.27); this.head.add(nose);
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.125, 20, 16), fur);
+    skull.scale.set(1, 0.95, 1.05); skull.castShadow = true; this.head.add(skull);
+    const snout = new THREE.Mesh(new THREE.CapsuleGeometry(0.056, 0.1, 6, 14), fur);
+    snout.rotation.x = Math.PI / 2; snout.position.set(0, -0.035, 0.155); snout.castShadow = true; this.head.add(snout);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 10), black);
+    nose.position.set(0, -0.012, 0.245); nose.scale.set(1.1, 0.85, 0.9); this.head.add(nose);
+    const brow = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshStandardMaterial({ color: 0xd9915a, roughness: 0.8 }));
     for (const s of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), eyeWhite);
-      eye.position.set(s * 0.06, 0.03, 0.09); this.head.add(eye);
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8), black);
-      pupil.position.set(s * 0.065, 0.03, 0.11); this.head.add(pupil);
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.17, 0.1), fur);
-      ear.position.set(s * 0.13, -0.05, -0.02);
-      ear.rotation.z = s * 0.25;
+      // Eye looks forward: iris/pupil/highlight stacked along the eye normal n.
+      const e = new THREE.Vector3(s * 0.06, 0.035, 0.095);
+      const n = new THREE.Vector3(s * 0.25, 0.1, 0.96).normalize();
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.034, 14, 12), eyeWhite);
+      eye.position.copy(e); this.head.add(eye);
+      const iris = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 10), new THREE.MeshStandardMaterial({ color: 0x3a2313, roughness: 0.2 }));
+      iris.position.copy(e).addScaledVector(n, 0.022); this.head.add(iris);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), black);
+      pupil.position.copy(e).addScaledVector(n, 0.031); this.head.add(pupil);
+      const spark = new THREE.Mesh(new THREE.SphereGeometry(0.006, 6, 6), glint);
+      spark.position.copy(e).addScaledVector(n, 0.034).add(new THREE.Vector3(-s * 0.006, 0.009, 0)); this.head.add(spark);
+      const b = brow.clone(); b.position.set(s * 0.06, 0.085, 0.08); b.scale.set(1.2, 0.5, 0.8); this.head.add(b);
+      // Floppy ear: flattened capsule hanging from the side of the skull
+      const ear = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.13, 6, 12), fur);
+      ear.scale.set(0.4, 1, 1);
+      ear.position.set(s * 0.125, -0.06, -0.01);
+      ear.rotation.z = s * 0.3; ear.rotation.x = -0.15;
       ear.castShadow = true; this.head.add(ear);
     }
     this.mouth.position.set(0, -0.06, 0.26);
     this.head.add(this.mouth);
 
+    // Collar with a brass tag.
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.022, 10, 32), collarMat);
+    collar.position.set(0, 0.265, 0.4); collar.rotation.x = 0.2; this.root.add(collar);
+    const tag = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.008, 16), brass);
+    tag.position.set(0, 0.1, 0.44); tag.rotation.x = Math.PI / 2 + 0.25; this.root.add(tag);
+
+    // Short legs with rounded paws.
     const legOffsets: Array<[number, number]> = [[-0.09, 0.25], [0.09, 0.25], [-0.09, -0.25], [0.09, -0.25]];
     for (const [x, z] of legOffsets) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.16, 8), fur);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.032, 0.16, 12), fur);
       leg.position.set(x, 0.08, z);
       leg.castShadow = true;
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.042, 12, 10), fur);
+      paw.position.set(0, -0.075, 0.015); paw.scale.set(1, 0.6, 1.25); paw.castShadow = true;
+      leg.add(paw);
       this.root.add(leg);
       this.legs.push(leg);
     }
-    this.tail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 0.28, 6), fur);
-    this.tail.position.set(0, 0.34, -0.46);
-    this.tail.rotation.x = -0.9;
+    // Tail: a curved tube that sweeps up.
+    const tailCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0.05, -0.1), new THREE.Vector3(0, 0.14, -0.19), new THREE.Vector3(0, 0.26, -0.24),
+    ]);
+    this.tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve, 12, 0.022, 8, false), fur);
+    this.tail.position.set(0, 0.3, -0.42);
+    this.tail.castShadow = true;
     this.root.add(this.tail);
 
     scene.add(this.root);
@@ -135,7 +173,7 @@ export class Tony {
       leg.rotation.x = Math.sin(phase) * amp;
     });
     const wag = 1 + this.happy * 3;
-    this.tail.rotation.y = Math.sin(this.walkPhase * 0.8 * wag) * (0.35 + this.happy * 0.5);
+    this.tail.rotation.y = Math.sin(this.walkPhase * 0.8 * wag) * (0.55 + this.happy * 0.6);
     this.head.position.y = 0.36 + (wantsMove ? Math.sin(this.walkPhase * 2) * 0.01 : Math.sin(this.walkPhase) * 0.006);
     this.body.position.y = 0.26 + (wantsMove ? Math.abs(Math.sin(this.walkPhase)) * 0.015 : 0);
 

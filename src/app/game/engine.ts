@@ -5,6 +5,8 @@ import { Human, Slipper } from './human';
 import { ChewItem, createItems, PlanarReflection, Puddle, Sparkles, Dust } from './items';
 import { Sfx } from './audio';
 import { Bubble, GameUi, InputState, LightUniforms } from './types';
+import { PostFx } from './postfx';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 const KEY_MAP: Record<string, keyof InputState> = {
   KeyW: 'w', ArrowUp: 'w', KeyA: 'a', ArrowLeft: 'a',
@@ -37,10 +39,11 @@ export class GameEngine {
   dtScale = 1;
 
   private readonly reflection = new PlanarReflection(768);
+  private readonly postfx: PostFx;
   private readonly sparkles: Sparkles;
   private readonly dust: Dust;
   private readonly input: InputState = { w: false, a: false, s: false, d: false, e: false, f: false, q: false, ePressed: false, qPressed: false };
-  private readonly orbit = { yaw: 0, pitch: 0.42, dist: 3.6 };
+  private readonly orbit = { yaw: 0, pitch: 0.3, dist: 3.4 };
   private bustCooldown = 0;
   private statusTick = 0;
   private last = performance.now();
@@ -54,15 +57,24 @@ export class GameEngine {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.shadowMap.autoUpdate = false;  // updated once per frame, in the reflection pass
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
 
     this.scene.background = new THREE.Color(0x1b1713);
-    this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.05, 60);
+    this.camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.05, 60);
     this.camera.layers.enable(1);
 
+    // Image-based lighting: a neutral "room" environment gives every PBR material
+    // soft reflections and fills the shadows with believable bounce light.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.35;
+    pmrem.dispose();
+
     this.world = new World(this.scene);
+    this.postfx = new PostFx(this.renderer, this.scene, this.camera);
 
     const lightUniforms: LightUniforms = {
       uSunDir: { value: this.world.sun.position.clone().normalize() },
@@ -103,6 +115,7 @@ export class GameEngine {
 
   resize(width: number, height: number): void {
     this.renderer.setSize(width, height);
+    this.postfx.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
   }
@@ -599,6 +612,6 @@ export class GameEngine {
     // 1) shadow maps + planar reflection pass, 2) main pass
     this.renderer.shadowMap.needsUpdate = true;
     if (this.puddles.length) this.reflection.update(this.renderer, this.scene, this.camera);
-    this.renderer.render(this.scene, this.camera);
+    this.postfx.render();
   }
 }

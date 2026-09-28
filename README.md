@@ -47,6 +47,13 @@ node test-ng.js    # needs `npm i -D playwright` + a Chromium; drives steal → 
 `window.__tony` exposes the engine in the console for debugging
 (`__tony.dtScale = 4` speeds up time, `__tony.bladder = 1` fills the meter).
 
+## Credits
+
+Tony's model: ["Dashshund Dog"](https://sketchfab.com/3d-models/dashshund-dog-cb0abb276cc247f095c0c527db987276)
+by [spooneystone](https://sketchfab.com/spooneystone), licensed under
+[CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/). Coat recoloured to copper; material
+converted from specular-glossiness to metallic-roughness for three.js. Fur is a runtime shell shader.
+
 ## Controls
 
 WASD — run · mouse drag — orbit camera · wheel — zoom · E — grab / steal (hold) / hide / drop · F (hold) — chew · Q — pee when the bladder is full.

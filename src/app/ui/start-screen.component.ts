@@ -31,7 +31,8 @@ import { GameService } from '../game.service';
           </div>
         </div>
         <button type="button" (click)="game.play()">Click to play</button>
-        <p class="tech">Angular + TypeScript + Three.js: hand-written GLSL (copper fur, chewable vertex displacement, puddle with planar reflection), PCF shadow maps, BufferGeometry apartment, particle buffers.</p>
+        <p class="tech">Angular + TypeScript + Three.js: hand-written GLSL (shell fur, chewable vertex displacement, puddle with planar reflection), GTAO + bloom post-processing, PCF shadow maps, particle buffers.
+          Dog model: <a href="https://sketchfab.com/3d-models/dashshund-dog-cb0abb276cc247f095c0c527db987276" target="_blank" rel="noopener">“Dashshund Dog”</a> by spooneystone, CC-BY-4.0.</p>
       </div>
     </div>
   `,

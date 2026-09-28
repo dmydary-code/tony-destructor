@@ -289,3 +289,70 @@ export const SHELL_FRAG = /* glsl */`
     gl_FragColor = vec4(col, 1.0);
   }
 `;
+
+// ---- Skinned shell fur for the glTF dachshund --------------------------------
+// Same idea as SHELL_*, but the vertices go through three.js skinning first so
+// the fur follows the animated skeleton. uShell = 0 draws the skin itself.
+export const SKIN_FUR_VERT = /* glsl */`
+  #include <common>
+  #include <skinning_pars_vertex>
+  uniform float uShell;
+  uniform float uFurLen;     // in the mesh's object units
+  uniform float uTime;
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vObjPos;
+  varying vec2 vUv;
+  void main() {
+    vObjPos = position;
+    vUv = uv;
+    #include <skinbase_vertex>
+    #include <beginnormal_vertex>
+    #include <skinnormal_vertex>
+    #include <begin_vertex>
+    #include <skinning_vertex>
+    vec3 n = normalize(objectNormal);
+    vec3 p = transformed + n * uFurLen * uShell;
+    vec4 wp = modelMatrix * vec4(p, 1.0);
+    wp.y -= 0.02 * uShell * uShell;                                  // droop (metres)
+    wp.x += sin(uTime * 2.0 + wp.z * 6.0) * 0.004 * uShell * uShell; // sway
+    vWorldPos = wp.xyz;
+    vNormal = normalize(mat3(modelMatrix) * n);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+export const SKIN_FUR_FRAG = /* glsl */`
+  precision highp float;
+  uniform sampler2D uMap;
+  uniform float uShell;
+  uniform float uDensity;
+  varying vec3 vNormal;
+  varying vec3 vWorldPos;
+  varying vec3 vObjPos;
+  varying vec2 vUv;
+  ${NOISE_GLSL}
+  ${LIGHTING_GLSL}
+  void main() {
+    vec3 tex = texture2D(uMap, vUv).rgb;
+    float lum = dot(tex, vec3(0.3, 0.59, 0.11));
+    if (uShell > 0.0) {
+      if (lum > 0.25 || lum < 0.004) discard;   // no fur on eyes, nose, pads
+      vec3 cell = vObjPos * uDensity;
+      vec3 f = fract(cell) - 0.5;
+      float h = hash3(floor(cell));
+      float r = dot(f, f) * 3.0;
+      if (h * (1.0 - r * 0.7) < uShell * 0.85) discard;
+    }
+    vec3 N = normalize(vNormal);
+    if (!gl_FrontFacing) N = -N;
+    vec3 V = normalize(cameraPosition - vWorldPos);
+    vec3 albedo = tex * (0.92 + 0.16 * noise3(vObjPos * 4.0));
+    vec3 col = shade(N, V, vWorldPos, albedo, lum > 0.25 ? 60.0 : 12.0, lum > 0.25 ? 0.6 : 0.08);
+    col *= mix(0.8, 1.18, uShell);
+    col *= 0.75 + 0.25 * smoothstep(-0.6, 0.6, N.y);
+    float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    col += rim * albedo * 0.6 * uShell;
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { SKIN_FUR_VERT, SKIN_FUR_FRAG } from './shaders';
 import { InputState, LightUniforms } from './types';
 import { World } from './world';
 import type { ChewItem, Puddle } from './items';
@@ -19,21 +18,16 @@ export type BusyAction =
 const MODEL_URL = 'models/dachshund/scene.gltf';
 /** Nose-to-tail length we scale the model to, in metres. */
 const BODY_LENGTH = 1.0;
-const SHELLS = 12;
-const FUR_LEN_M = 0.022;
 
 type Clip = 'idle' | 'idle2' | 'walk' | 'run' | 'eat';
 const CLIP_NAMES: Record<Clip, string> = {
   idle: 'Armature|Idle_1', idle2: 'Armature|Idle_2', walk: 'Armature|Walk', run: 'Armature|Run', eat: 'Armature|Eating',
 };
 
-/** Tony: an animated glTF dachshund with shell fur, driven by the game's input. */
+/** Tony: an animated glTF dachshund with a smooth copper coat, driven by the game's input. */
 export class Tony {
   readonly root = new THREE.Group();
   readonly mouth = new THREE.Object3D();
-  /** Shared uniforms (time + lights) for every fur shell. */
-  private readonly furUniforms: Record<string, THREE.IUniform>;
-  private readonly furMats: THREE.ShaderMaterial[] = [];
   private mixer: THREE.AnimationMixer | null = null;
   private actions: Partial<Record<Clip, THREE.AnimationAction>> = {};
   private current: Clip | null = null;
@@ -52,8 +46,7 @@ export class Tony {
 
   get pos(): THREE.Vector3 { return this.root.position; }
 
-  constructor(scene: THREE.Scene, lightUniforms: LightUniforms, private readonly world: World) {
-    this.furUniforms = { ...lightUniforms, uTime: { value: 0 }, uMap: { value: null } };
+  constructor(scene: THREE.Scene, _lightUniforms: LightUniforms, private readonly world: World) {
     // Until the model arrives the mouth sits roughly where the snout will be.
     this.mouth.position.set(0, 0.22, 0.5);
     this.root.add(this.mouth);
@@ -81,7 +74,7 @@ export class Tony {
 
     let skinned: THREE.SkinnedMesh | null = null;
     model.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinned = o as THREE.SkinnedMesh; });
-    if (skinned) this.setupFur(skinned, scale);
+    if (skinned) this.setupCoat(skinned);
 
     // Mouth follows the head bone, keeping the root's orientation and scene-unit scale.
     const headBone = model.getObjectByName('Head_031') ?? model.getObjectByName('HeadHandle_055');
@@ -108,29 +101,15 @@ export class Tony {
     this.loaded = true;
   }
 
-  /** Replaces the loader material with the fur shader (shell 0) and stacks fur shells on top. */
-  private setupFur(mesh: THREE.SkinnedMesh, worldScale: number): void {
+  /** Smooth short-haired coat: PBR material so it takes the room's lights, shadows and reflections. */
+  private setupCoat(mesh: THREE.SkinnedMesh): void {
     const src = mesh.material as THREE.MeshStandardMaterial;
-    this.furUniforms['uMap'].value = src.map;
-    const furLen = FUR_LEN_M / worldScale;        // object units
-    const make = (shell: number): THREE.ShaderMaterial => {
-      const mat = new THREE.ShaderMaterial({
-        vertexShader: SKIN_FUR_VERT, fragmentShader: SKIN_FUR_FRAG,
-        uniforms: { ...this.furUniforms, uShell: { value: shell }, uFurLen: { value: furLen }, uDensity: { value: worldScale / 0.0055 } },
-        side: THREE.DoubleSide,
-      });
-      this.furMats.push(mat);
-      return mat;
-    };
-    mesh.material = make(0);
+    mesh.material = new THREE.MeshStandardMaterial({
+      map: src.map, roughness: 0.55, metalness: 0, envMapIntensity: 0.5,
+    });
     mesh.castShadow = true;
+    mesh.receiveShadow = true;
     mesh.frustumCulled = false;
-    for (let i = 1; i <= SHELLS; i++) {
-      const shell = new THREE.SkinnedMesh(mesh.geometry, make(i / SHELLS));
-      shell.bind(mesh.skeleton, mesh.bindMatrix);
-      shell.frustumCulled = false;
-      mesh.add(shell);
-    }
   }
 
   private play(clip: Clip, fade = 0.2): void {
@@ -189,7 +168,6 @@ export class Tony {
 
     this.happy = Math.max(0, this.happy - dt * 0.5);
     this.scared = Math.max(0, this.scared - dt);
-    this.furUniforms['uTime'].value += dt;
   }
 
   /** Attach a carried object under the snout. */

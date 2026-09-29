@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FUR_VERT, FUR_FRAG } from './shaders';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { InputState, LightUniforms } from './types';
 import { World } from './world';
 import type { ChewItem, Puddle } from './items';
@@ -14,15 +14,24 @@ export type BusyAction =
   | { type: 'chew'; t: number; item: ChewItem }
   | { type: 'pee'; t: number; duration: number; puddle: Puddle };
 
-/** Tony: a low-poly copper dachshund made out of primitives, lit by a custom GLSL fur shader. */
+/** "Dashshund Dog" by spooneystone — CC-BY-4.0, https://sketchfab.com/3d-models/dashshund-dog-cb0abb276cc247f095c0c527db987276 */
+const MODEL_URL = 'models/dachshund/scene.gltf';
+/** Nose-to-tail length we scale the model to, in metres. */
+const BODY_LENGTH = 1.0;
+
+type Clip = 'idle' | 'idle2' | 'walk' | 'run' | 'eat';
+const CLIP_NAMES: Record<Clip, string> = {
+  idle: 'Armature|Idle_1', idle2: 'Armature|Idle_2', walk: 'Armature|Walk', run: 'Armature|Run', eat: 'Armature|Eating',
+};
+
+/** Tony: an animated glTF dachshund with a smooth copper coat, driven by the game's input. */
 export class Tony {
   readonly root = new THREE.Group();
-  readonly head = new THREE.Group();
   readonly mouth = new THREE.Object3D();
-  readonly fur: THREE.ShaderMaterial;
-  private readonly tail: THREE.Mesh;
-  private readonly body: THREE.Mesh;
-  private readonly legs: THREE.Mesh[] = [];
+  private mixer: THREE.AnimationMixer | null = null;
+  private actions: Partial<Record<Clip, THREE.AnimationAction>> = {};
+  private current: Clip | null = null;
+  private loaded = false;
 
   heading = Math.PI;
   speed = 3.2;
@@ -37,64 +46,80 @@ export class Tony {
 
   get pos(): THREE.Vector3 { return this.root.position; }
 
-  constructor(scene: THREE.Scene, lightUniforms: LightUniforms, private readonly world: World) {
-    this.fur = new THREE.ShaderMaterial({
-      vertexShader: FUR_VERT,
-      fragmentShader: FUR_FRAG,
-      uniforms: {
-        ...lightUniforms,
-        uColor: { value: new THREE.Color(0xb8642a) },  // copper
-        uBelly: { value: new THREE.Color(0xd9915a) },
-        uTime: { value: 0 },
-      },
-    });
-    const fur = this.fur;
-    const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
-    const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xffffff });
-
-    this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.62, 6, 14), fur);
-    this.body.rotation.x = Math.PI / 2;   // capsule axis → z (forward = +z)
-    this.body.position.y = 0.26;
-    this.body.castShadow = true;
-    this.root.add(this.body);
-
-    this.head.position.set(0, 0.36, 0.42);
-    this.root.add(this.head);
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 12), fur);
-    skull.castShadow = true; this.head.add(skull);
-    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.2), fur);
-    snout.position.set(0, -0.03, 0.16); snout.castShadow = true; this.head.add(snout);
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), black);
-    nose.position.set(0, 0, 0.27); this.head.add(nose);
-    for (const s of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), eyeWhite);
-      eye.position.set(s * 0.06, 0.03, 0.09); this.head.add(eye);
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8), black);
-      pupil.position.set(s * 0.065, 0.03, 0.11); this.head.add(pupil);
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.17, 0.1), fur);
-      ear.position.set(s * 0.13, -0.05, -0.02);
-      ear.rotation.z = s * 0.25;
-      ear.castShadow = true; this.head.add(ear);
-    }
-    this.mouth.position.set(0, -0.06, 0.26);
-    this.head.add(this.mouth);
-
-    const legOffsets: Array<[number, number]> = [[-0.09, 0.25], [0.09, 0.25], [-0.09, -0.25], [0.09, -0.25]];
-    for (const [x, z] of legOffsets) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.16, 8), fur);
-      leg.position.set(x, 0.08, z);
-      leg.castShadow = true;
-      this.root.add(leg);
-      this.legs.push(leg);
-    }
-    this.tail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.03, 0.28, 6), fur);
-    this.tail.position.set(0, 0.34, -0.46);
-    this.tail.rotation.x = -0.9;
-    this.root.add(this.tail);
-
+  constructor(scene: THREE.Scene, _lightUniforms: LightUniforms, private readonly world: World) {
+    // Until the model arrives the mouth sits roughly where the snout will be.
+    this.mouth.position.set(0, 0.22, 0.5);
+    this.root.add(this.mouth);
     scene.add(this.root);
     this.root.position.set(-2.5, 0, 0.5);
     this.root.rotation.y = this.heading;
+    void this.load();
+  }
+
+  private async load(): Promise<void> {
+    const gltf = await new GLTFLoader().loadAsync(MODEL_URL);
+    const model = gltf.scene;
+    model.updateMatrixWorld(true);
+
+    // Fit: scale so the longest horizontal extent is BODY_LENGTH, feet on the floor.
+    const box = new THREE.Box3().setFromObject(model, true);
+    const size = box.getSize(new THREE.Vector3());
+    const scale = BODY_LENGTH / Math.max(size.x, size.z);
+    const holder = new THREE.Group();
+    holder.scale.setScalar(scale);
+    holder.position.set(-(box.min.x + size.x / 2) * scale, -box.min.y * scale, -(box.min.z + size.z / 2) * scale);
+    holder.rotation.y = size.x > size.z ? Math.PI / 2 : 0;   // long axis → z (forward)
+    holder.add(model);
+    this.root.add(holder);
+
+    let skinned: THREE.SkinnedMesh | null = null;
+    model.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinned = o as THREE.SkinnedMesh; });
+    if (skinned) this.setupCoat(skinned);
+
+    // Mouth follows the head bone, keeping the root's orientation and scene-unit scale.
+    const headBone = model.getObjectByName('Head_031') ?? model.getObjectByName('HeadHandle_055');
+    if (headBone) {
+      model.updateMatrixWorld(true);
+      this.root.updateMatrixWorld(true);
+      const headWorld = headBone.getWorldPosition(new THREE.Vector3());
+      const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.root.quaternion);
+      const target = headWorld.clone().addScaledVector(forward, 0.2).add(new THREE.Vector3(0, -0.07, 0));
+      headBone.add(this.mouth);
+      this.mouth.position.copy(headBone.worldToLocal(target.clone()));
+      const boneQ = headBone.getWorldQuaternion(new THREE.Quaternion());
+      this.mouth.quaternion.copy(boneQ.invert().multiply(this.root.getWorldQuaternion(new THREE.Quaternion())));
+      const s = headBone.getWorldScale(new THREE.Vector3());
+      this.mouth.scale.set(1 / s.x, 1 / s.y, 1 / s.z);
+    }
+
+    this.mixer = new THREE.AnimationMixer(model);
+    for (const [key, name] of Object.entries(CLIP_NAMES) as Array<[Clip, string]>) {
+      const clip = THREE.AnimationClip.findByName(gltf.animations, name);
+      if (clip) this.actions[key] = this.mixer.clipAction(clip);
+    }
+    this.play('idle', 0);
+    this.loaded = true;
+  }
+
+  /** Smooth short-haired coat: PBR material so it takes the room's lights, shadows and reflections. */
+  private setupCoat(mesh: THREE.SkinnedMesh): void {
+    const src = mesh.material as THREE.MeshStandardMaterial;
+    mesh.material = new THREE.MeshStandardMaterial({
+      map: src.map, roughness: 0.55, metalness: 0, envMapIntensity: 0.5,
+    });
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+  }
+
+  private play(clip: Clip, fade = 0.2): void {
+    if (clip === this.current) return;
+    const next = this.actions[clip];
+    if (!next) return;
+    const prev = this.current ? this.actions[this.current] : undefined;
+    next.reset().setEffectiveWeight(1).play();
+    if (prev) prev.crossFadeTo(next, fade, false); else next.fadeIn(fade);
+    this.current = clip;
   }
 
   private readonly moveDir = new THREE.Vector3();
@@ -109,6 +134,7 @@ export class Tony {
     const wantsMove = (ix !== 0 || iz !== 0) && !this.busy;
     this.moving = wantsMove;
 
+    let spd = this.speed;
     if (wantsMove) {
       // camera-relative movement on the XZ plane
       this.moveDir.set(ix, 0, -iz).normalize().applyAxisAngle(Tony.UP, camYaw);
@@ -116,7 +142,6 @@ export class Tony {
       let diff = targetHeading - this.heading;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
       this.heading += diff * Math.min(1, dt * 14);
-      let spd = this.speed;
       if (this.carrying) spd *= 0.85;
       if (this.scared > 0) spd *= 0.6;
       this.root.position.x += Math.sin(this.heading) * spd * dt;
@@ -128,36 +153,21 @@ export class Tony {
     }
     this.root.rotation.y = this.heading;
 
-    // Procedural animation
-    const amp = wantsMove ? 0.45 : 0.0;
-    this.legs.forEach((leg, i) => {
-      const phase = this.walkPhase + (i === 0 || i === 3 ? 0 : Math.PI);
-      leg.rotation.x = Math.sin(phase) * amp;
-    });
-    const wag = 1 + this.happy * 3;
-    this.tail.rotation.y = Math.sin(this.walkPhase * 0.8 * wag) * (0.35 + this.happy * 0.5);
-    this.head.position.y = 0.36 + (wantsMove ? Math.sin(this.walkPhase * 2) * 0.01 : Math.sin(this.walkPhase) * 0.006);
-    this.body.position.y = 0.26 + (wantsMove ? Math.abs(Math.sin(this.walkPhase)) * 0.015 : 0);
-
-    // Pose overrides per action
-    if (this.busy?.type === 'pee') {
-      this.legs[3].rotation.z = -1.2;
-      this.root.rotation.z = 0.12;
-    } else {
-      this.legs[3].rotation.z = 0;
-      this.root.rotation.z = 0;
+    // Animation state
+    if (this.busy?.type === 'chew' || this.busy?.type === 'steal') this.play('eat');
+    else if (this.busy?.type === 'pee') this.play('idle2');
+    else if (wantsMove) this.play(spd < this.speed * 0.9 ? 'walk' : 'run');
+    else this.play('idle');
+    if (this.mixer) {
+      const run = this.actions['run'];
+      if (run) run.timeScale = 1.0 + this.happy * 0.3;
+      this.mixer.update(dt);
     }
-    if (this.busy?.type === 'chew') {
-      this.head.rotation.x = Math.sin(performance.now() * 0.02) * 0.15;
-    } else if (this.busy?.type === 'steal') {
-      this.head.rotation.x = 0.35 + Math.sin(performance.now() * 0.03) * 0.1;
-    } else {
-      this.head.rotation.x = 0;
-    }
+    // Pee pose: lean a little
+    this.root.rotation.z = this.busy?.type === 'pee' ? 0.12 : 0;
 
     this.happy = Math.max(0, this.happy - dt * 0.5);
     this.scared = Math.max(0, this.scared - dt);
-    (this.fur.uniforms['uTime'] as THREE.IUniform<number>).value += dt;
   }
 
   /** Attach a carried object under the snout. */

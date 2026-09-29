@@ -86,13 +86,15 @@ export const FUR_FRAG = /* glsl */`
     vec3 N = normalize(vNormal);
     vec3 V = normalize(cameraPosition - vWorldPos);
     // fur strands: high-frequency noise darkens/lightens tiny streaks
-    float strands = noise3(vObjPos * vec3(60.0, 14.0, 60.0));
+    float strands = noise3(vObjPos * vec3(60.0, 14.0, 60.0)) * 0.6 + noise3(vObjPos * 9.0) * 0.4;
     float belly = smoothstep(-0.2, -0.9, N.y);
-    vec3 albedo = mix(uColor, uBelly, belly) * (0.85 + 0.3 * strands);
-    vec3 col = shade(N, V, vWorldPos, albedo, 24.0, 0.35);
-    // rim light gives the metallic-copper sheen
+    vec3 albedo = mix(uColor, uBelly, belly) * (0.88 + 0.22 * strands);
+    vec3 col = shade(N, V, vWorldPos, albedo, 12.0, 0.12);
+    // ambient occlusion baked into the shape: darker underside and between the legs
+    col *= 0.7 + 0.3 * smoothstep(-0.6, 0.6, N.y);
+    // velvet rim: soft, warm sheen along the silhouette (fur catching the light)
     float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-    col += rim * vec3(1.0, 0.55, 0.25) * 0.35;
+    col += rim * vec3(1.0, 0.6, 0.35) * 0.22;
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -230,3 +232,4 @@ export const SPARK_FRAG = /* glsl */`
     gl_FragColor = vec4(vColor, a);
   }
 `;
+
